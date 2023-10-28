@@ -1,108 +1,72 @@
-import aws  from "aws-sdk";
-import multer  from "multer";
-import multerS3  from "multer-s3";
-import dotenv from "dotenv";
-import FILES from "../models/FIlemodel.js";
-import {PutObjectCommand, S3Client }from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import multer from 'multer';
+import dotenv from 'dotenv';
+import FILES from '../models/FIlemodel.js';
 
 dotenv.config();
-
-aws.config.update({
-  accessKeyId: process.env.AWS_ACCESS_KEY,
-  secretAccessKey: process.env.AWS_SECRET_KEY,
-})
-const s3 = new aws.S3();
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
   credentials: {
-    accessKeyId : process.env.AWS_ACCESS_KEY,
+    accessKeyId: process.env.AWS_ACCESS_KEY,
     secretAccessKey: process.env.AWS_SECRET_KEY,
   }
-})
-
-
-//Specify the multer config
-export const  upload = multer({
-  // storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 1024 * 1024 * 5,
-  },
-  fileFilter: function (req, file, done) {
-    if (
-      file.mimetype === "image/jpeg" ||
-      file.mimetype === "image/png" ||
-      file.mimetype === "image/jpg"
-    ) {
-      done(null, true);
-    } else {
-      //prevent the upload
-      var newError = new Error("File type is incorrect");
-      newError.name = "MulterError";
-      done(newError, false);
-    }
-  },
 });
 
-const uploadToS3 = (fileData) => {
-  return new Promise((resolve, reject) => {
-    const params = {
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: `${Date.now().toString()}.jpg`,
-      Body: fileData,
-    };
-    s3.upload(params, (err, data) => {
-      if (err) {
-        console.log(err);
-        return reject(err);
-      }
-      console.log(data);
-      return resolve(data);
-    });
-  });
-};
-
-
-const uploadS3 = async(fileData)=> {
+const uploadToS3 = async (fileData) => {
   const uploadParams = {
     Bucket: process.env.AWS_BUCKET_NAME,
     Body: fileData,
     Key: `${Date.now().toString()}.jpg`,
-    
-  }
+  };
 
   return await s3Client.send(new PutObjectCommand(uploadParams));
-}
-
-
-
+};
 
 export const uploadSingle = async (req, res) => {
-  console.log(req.file);
   if (req.file) {
-    await uploadS3(req.file.buffer);
+    try {
+      await uploadToS3(req.file.buffer);
+
+      // Save file details to MongoDB
+      await FILES.create({ photoUrl: req.file.location }); // Assuming req.file.location holds the S3 URL
+
+      return res.status(200).json({
+        msg: 'Image uploaded successfully',
+      });
+    } catch (error) {
+      return res.status(500).json({
+        msg: 'Failed to upload image',
+        error: error.message
+      });
+    }
+  } else {
+    return res.status(400).json({
+      msg: 'No file received',
+    });
   }
-console.log("klsdfjksdhfsd")
-  res.send({
-    msg: "Image uploaded succesfully",
-  });
 };
-
-
-//upload multiple image
 
 export const uploadMultiple = async (req, res) => {
-  // console.log(req.files);
-
   if (req.files && req.files.length > 0) {
-    for (var i = 0; i < req.files.length; i++) {
-      // console.log(req.files[i]);
-      await uploadToS3(req.files[i].buffer);
+    try {
+      for (const file of req.files) {
+        await uploadToS3(file.buffer);
+        // Additional logic to save file details to MongoDB can be added here
+      }
+
+      return res.status(200).json({
+        msg: `Successfully uploaded ${req.files.length} files!`,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        msg: 'Failed to upload files',
+        error: error.message
+      });
     }
+  } else {
+    return res.status(400).json({
+      msg: 'No files received',
+    });
   }
-
-  res.send({
-    msg: "Successfully uploaded " + req.files.length + " files!",
-  });
 };
-
