@@ -82,7 +82,7 @@ export const uploadSingle = async (req, res) => {
   if (req.file) {
     await uploadS3(req.file.buffer);
   }
-
+console.log("klsdfjksdhfsd")
   res.send({
     msg: "Image uploaded succesfully",
   });
